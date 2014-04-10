@@ -1,0 +1,23 @@
+<project name="WildCat-central" default="launchRemoteCopyAndTest">
+	<target name="-init">
+		<dirname property="antfile.dir" file="${ant.file}" />
+
+		<path id="classpath.path">
+			<fileset dir="lib">
+				<include name="*.jar" />
+			</fileset>
+		</path>
+
+		<taskdef name="groovy" classname="org.codehaus.groovy.ant.Groovy" classpathref="classpath.path" />
+	</target>
+
+	<target name="launchRemoteCopyAndTest" depends="-init">
+		<fail unless="wild.testProperties" message="wild.testProperties property needs to point to a .properties file!  (Can't use Ant -propertyfile.)"/>
+		<available file="${wild.testProperties}" property="isTestPropertiesFileAvailable"/>
+		<fail unless="isTestPropertiesFileAvailable" message="${wild.testProperties} doesn't seem to exist?!"/>
+		<property file="${wild.testProperties}" />
+		<echo message="Read ${wild.testProperties}" />
+		
+		<groovy src="scripts/remoteExecutor.groovy" classpathref="classpath.path" />
+	</target>
+</project>

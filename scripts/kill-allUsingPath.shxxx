@@ -1,0 +1,124 @@
+#!/bin/ksh 
+
+# set variables
+RESDIR=$PWD
+PRGDIR=`dirname $0`
+PRG=`basename $0`
+now=`date +%Y-%m-%dT%H%M%S`
+TMP=/var/tmp
+TMP_OUTFILE_NAME=$TMP/$PRG$signal.$now
+
+
+if [ $# -lt 1 ]
+then
+    echo "ERROR: Syntax is $PRG <path used by processes> [silent|debug]"
+    exit -1
+fi
+
+DIR_TO_KILL=$1
+SILENT=$2
+
+function logMessage {
+if [ "$SILENT" != "silent" ]; then
+    print "$@"  >&2
+fi
+}
+
+function logDebug {
+if [ "$SILENT" = "debug" ]; then
+    print "$@"  >&2
+fi
+}
+
+
+if [ ! -r "$DIR_TO_KILL" ]; then
+  logMessage "Warning: directory $DIR_TO_KILL doesn't exists"
+fi
+
+OS_TYPE=`uname`
+# AWK
+case "$OS_TYPE" in
+        "HP-UX")
+                ;;
+        "SunOS")
+                MY_AWK="/usr/xpg4/bin/awk"
+                MY_PSALL="/usr/ucb/ps -auxww"
+                MY_PSX="/usr/ucb/ps -uxww"
+                ;;
+        "AIX")
+                MY_AWK="/usr/bin/awk"
+                MY_PSALL="/usr/bin/ps auxww"
+                MY_PSX="/usr/bin/ps uxww"                
+                ;;
+        "Linux")
+		MY_AWK="/usr/awk"
+                MY_PSALL="/usr/bin/ps auxww"
+                MY_PSX="/usr/bin/ps uxww"                
+                ;;
+        CYGWIN*)
+		MY_AWK="/usr/bin/awk"
+                MY_PSALL="/usr/bin/ps auxww"
+                MY_PSX="/usr/bin/ps uxww"                
+                ;;
+         *)
+                echo "Unknown Operating System -$OS_TYPE!"
+		exit -1
+                ;;
+esac
+
+function generateProcessList {
+
+    $MY_PSALL | fgrep "$DIR_TO_KILL" | fgrep -v fgrep | fgrep -v $PRG | cut -d"/" -f1 | $MY_AWK '{print $2}' | tr -d " " > $TMP_OUTFILE_NAME
+
+#    if [ "$SILENT" = "debug" ]; then
+#       $MY_PSALL | fgrep "$DIR_TO_KILL" | fgrep -v fgrep 
+#    fi
+}
+
+function KillPRocessWithSignal {
+        signal=$1
+        
+generateProcessList
+
+logDebug "Trying to kill `(cat $TMP_OUTFILE_NAME | wc -l)` processes"
+
+for process in `cat  $TMP_OUTFILE_NAME`
+do
+    logMessage "Kill $signal process=$process"
+    logMessage "`$MY_PSX $process`"
+
+    if [ "$SILENT" = "debug" ]; then
+      logDebug "faking  kill $signal $process "
+    else
+      kill $signal $process 1>&- 2>&-
+    fi
+done
+
+rm $TMP_OUTFILE_NAME
+}
+
+function countRemainingProcess {
+
+generateProcessList
+result=`cat $TMP_OUTFILE_NAME | wc -l`
+rm  $TMP_OUTFILE_NAME
+echo "$result"
+}
+
+
+###########   MAIN
+
+KillPRocessWithSignal -15
+
+sleep 1
+KillPRocessWithSignal -15
+
+sleep 2
+KillPRocessWithSignal -9
+
+sleep 2
+RemainingProcess=`countRemainingProcess`
+
+logMessage "Exit: Returning status $RemainingProcess corresponding to # process remaining having a path to <$DIR_TO_KILL> it theirs arguments"
+exit $RemainingProcess
+

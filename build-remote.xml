@@ -1,0 +1,72 @@
+<project name="WildCat-remote" default="runTests">
+	<target name="-init">
+		<dirname property="antfile.dir" file="${ant.file}" />
+
+		<path id="classpath.path">
+			<!-- Do NOT add <pathelement location="scripts" /> here, else Groovy will see duplicate classes! -->
+			<fileset dir="lib">
+				<include name="*.jar" />
+			</fileset>
+		</path>
+
+		<taskdef name="groovy" classname="org.codehaus.groovy.ant.Groovy" classpathref="classpath.path" />
+		<taskdef name="groovyc" classname="org.codehaus.groovy.ant.Groovyc" classpathref="classpath.path" />
+	</target>
+
+	<target name="runTests" depends="-init">
+		<!-- I would prefer not having to use groovyc at all and all do run-time Groovy compilation,
+		     but I couldn't figure out how to get Ant's JUnit task to use Groovy's classloader which
+		     could do this.  So instead I'm groovyc'in all *.groovy to *.class quickly and then
+		     going the good ol'd normal standard way:
+		-->
+		<property name="built.groovyclasses" value="bin.groovyc"/>
+		<delete dir="${built.groovyclasses}"/>
+		<mkdir dir="${built.groovyclasses}"/>
+		
+		<groovyc srcdir="scripts" destdir="${built.groovyclasses}">
+		</groovyc>
+
+		<fail unless="wild.testProperties" message="wild.testProperties property needs to point to a .properties file!  (Can't use Ant -propertyfile.)"/>
+		<available file="${wild.testProperties}" property="isTestPropertiesFileAvailable"/>
+		<fail unless="isTestPropertiesFileAvailable" message="${wild.testProperties} doesn't seem to exist?!"/>
+		<property file="${wild.testProperties}"/>
+		<echo message="Read ${wild.testProperties}" />
+		<fail unless="wild.testName" message="Property 'wild.testName' is not set!"/>
+		
+		<!-- NOTE: The properties read above are unfortunately NOT forwarded to Tests by Ant's JUnit tasks!
+		   - The only purpose of the lines above is to find the wild.testName property.  Using sysproperty
+		   - below, we "forward" wild.testProperties into the Test, who will have to read properties again.
+		   - Phew.
+		  --> 
+		
+		<!-- The name of this directory is also hard-coded in remoteExecutor.groovy -->
+		<property name="built.testreports.dir" value="workToKeep/JUnitReports" />
+		<delete dir="${built.testreports.dir}"/>
+		<mkdir dir="${built.testreports.dir}" />
+		<!--
+		   - fork=true/maxmemory are used because apparently, even if the tests themselves do not
+		   - consume much heap space (ours mostly just do in theory very light Ant Exec!), if the  
+		   - output/log is long, there will be OutOfMemoryError problems otherwise; has happened. 
+		  --> 
+		<junit printsummary="yes" showoutput="true" fork="true" maxmemory="512m">
+			<classpath>
+				<path refid="classpath.path" />
+				<pathelement location="${built.groovyclasses}" />
+			</classpath>
+			<formatter type="plain" />
+			<formatter type="xml" />
+			<test name="${wild.testName}" todir="${built.testreports.dir}"/>
+			<sysproperty key="wild.testProperties" value="${wild.testProperties}"/>
+		</junit>
+		<echo message="JUnit finished running; reports in directory '${built.testreports.dir}' (on remote server)" />
+		<!-- <junitreport> ?  Not really needed, as Hudson does it nicely... -->
+		
+		<!-- The workToKeep directory will have the JUnitReports, and maybe some other stuff that tests have put there -->
+		<delete file="workToKeep.tar.gz" failonerror="true" verbose="true" />
+		<tar destfile="workToKeep.tar.gz" longfile="fail" compression="gzip">
+			<fileset dir="workToKeep">
+				<!-- No <exclude name=".settings/"/> anything? -->
+			</fileset>
+		</tar>
+	</target>
+</project>
